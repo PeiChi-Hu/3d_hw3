@@ -262,7 +262,35 @@ class NeuralRadianceField(torch.nn.Module):
         embedding_dim_xyz = self.harmonic_embedding_xyz.output_dim
         embedding_dim_dir = self.harmonic_embedding_dir.output_dim
 
-        pass
+        self.mlp = MLPWithInputSkips(
+            n_layers=cfg.n_layers_xyz,
+            input_dim=embedding_dim_xyz,
+            output_dim=4,                        # Density + 3 RGB color
+            skip_dim=embedding_dim_xyz,
+            hidden_dim=cfg.n_hidden_neurons_xyz, 
+            input_skips=[cfg.n_layers_xyz // 2]
+        )
+
+    def forward(self, ray_bundle):
+        points = ray_bundle.sample_points # (N_rays, n_pts_per_ray, 3)
+
+        # use Positional Encoding of the input to the network to achieve higher quality
+        positional_encoding_xyz = self.harmonic_embedding_xyz(points)
+
+        # MLPWithInputSkips forward
+        output = self.mlp(x=positional_encoding_xyz, z=positional_encoding_xyz)
+
+        density = output[..., 0:1]
+        color = output[..., 1:4]
+
+        # use the ReLU activation to map the first network output to density (to ensure that density is non-negative)
+        # use the Sigmoid activation to map the remaining raw network outputs to color
+        out = {
+            'density': torch.nn.functional.relu(density) ,
+            'feature': torch.sigmoid(color)
+        }
+
+        return out
 
 
 class NeuralSurface(torch.nn.Module):
