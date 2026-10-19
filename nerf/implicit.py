@@ -272,7 +272,12 @@ class NeuralRadianceField(torch.nn.Module):
         )
 
     def forward(self, ray_bundle):
+        # print("origins:", ray_bundle.origins.device)
+        # print("directions:", ray_bundle.directions.device)
+        # print("sample_points:", ray_bundle.sample_points.device)
+        # print("sample_lengths:", ray_bundle.sample_lengths.device)
         points = ray_bundle.sample_points # (N_rays, n_pts_per_ray, 3)
+        points = points.to(self.harmonic_embedding_xyz._frequencies.device)
 
         # use Positional Encoding of the input to the network to achieve higher quality
         positional_encoding_xyz = self.harmonic_embedding_xyz(points)

@@ -245,6 +245,14 @@ def create_model(cfg):
     model = Model(cfg)
     model.to(device); model.train()
 
+    print("Model device:", device)
+
+    for name, buffer in model.named_buffers():
+        print(name, buffer.device)
+
+    for name, param in model.named_parameters():
+        print(name, param.device)
+
     # Load checkpoints
     optimizer_state_dict = None
     start_epoch = 0
@@ -325,9 +333,15 @@ def train_nerf(
             # Sample rays
             xy_grid = get_random_pixels_from_image(
                 cfg.training.batch_size, cfg.data.image_size, camera
-            )
+            ).to(device)
             ray_bundle = get_rays_from_pixels(
                 xy_grid, cfg.data.image_size, camera
+            )
+            ray_bundle = ray_bundle._replace(
+                origins=ray_bundle.origins.to(device),
+                directions=ray_bundle.directions.to(device),
+                sample_points=ray_bundle.sample_points.to(device),
+                sample_lengths=ray_bundle.sample_lengths.to(device),
             )
             rgb_gt = sample_images_at_xy(image, xy_grid)
 
