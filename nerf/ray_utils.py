@@ -116,7 +116,11 @@ def get_random_pixels_from_image(n_pixels, image_size, camera):
     xy_grid = get_pixels_from_image(image_size, camera)
     
     # TODO (Q2.1): Random subsampling of pixel coordinaters
-    pass
+    num_total_pixels = xy_grid.shape[0]
+    random_sample_indices = torch.randint(
+        0, num_total_pixels, size=(n_pixels,), device=xy_grid.device
+    )
+    xy_grid_sub = xy_grid[random_sample_indices]
 
     # Return
     return xy_grid_sub.reshape(-1, 2)[:n_pixels]

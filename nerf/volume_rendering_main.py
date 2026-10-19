@@ -214,7 +214,7 @@ def train(
             out = model(ray_bundle)
 
             # TODO (Q2.2): Calculate loss
-            loss = None
+            loss = torch.nn.functional.mse_loss(out['feature'], rgb_gt)
 
             # Backprop
             optimizer.zero_grad()
@@ -235,7 +235,7 @@ def train(
         save=True, file_prefix='images/part_2_after_training'
     )
     all_images = render_images(
-        model, create_surround_cameras(3.0, n_poses=20), image_size, file_prefix='part_2'
+        model, create_surround_cameras(1.5, n_poses=20), image_size, file_prefix='part_2'
     )
     imageio.mimsave('images/part_2.gif', [np.uint8(im * 255) for im in all_images], loop=0)
 
