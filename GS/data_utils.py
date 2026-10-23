@@ -252,6 +252,6 @@ def colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs):
 
     basis = torch.stack([y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15], dim=-1).unsqueeze(-1)
 
-    rgb = torch.sum(spherical_harmonics.reshape(-1, 16, 3) * basis, dim=1) + 0.5
+    rgb = torch.sum(spherical_harmonics.reshape(-1, 16, 3) * basis, dim=1) + 0.5 # add 0.5 offset
     colours = torch.clamp(rgb, 0.0, 1.0)
     return colours
