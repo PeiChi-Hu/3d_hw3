@@ -56,51 +56,111 @@ class VolumeRenderer(torch.nn.Module):
         # Process the chunks of rays.
         chunk_outputs = []
 
+        # Q4.2
+        is_coarse_fine = isinstance(implicit_fn, (tuple, list))
+        if is_coarse_fine:
+            coarse_fn, fine_fn = implicit_fn
+
         for chunk_start in range(0, B, self._chunk_size):
             cur_ray_bundle = ray_bundle[chunk_start:chunk_start+self._chunk_size]
 
-            # Sample points along the ray
-            cur_ray_bundle = sampler(cur_ray_bundle)
-            n_pts = cur_ray_bundle.sample_shape[1]
+            if not is_coarse_fine:
+                # Sample points along the ray
+                cur_ray_bundle = sampler(cur_ray_bundle)
+                n_pts = cur_ray_bundle.sample_shape[1]
 
-            # Call implicit function with sample points
-            implicit_output = implicit_fn(cur_ray_bundle)
-            density = implicit_output['density']
-            feature = implicit_output['feature']
+                # Call implicit function with sample points
+                implicit_output = implicit_fn(cur_ray_bundle)
+                density = implicit_output['density']
+                feature = implicit_output['feature']
 
-            # Compute length of each ray segment
-            depth_values = cur_ray_bundle.sample_lengths[..., 0]
-            deltas = torch.cat(
-                (
-                    depth_values[..., 1:] - depth_values[..., :-1],
-                    1e10 * torch.ones_like(depth_values[..., :1]),
-                ),
-                dim=-1,
-            )[..., None]
+                # Compute length of each ray segment
+                depth_values = cur_ray_bundle.sample_lengths[..., 0]
+                deltas = torch.cat(
+                    (
+                        depth_values[..., 1:] - depth_values[..., :-1],
+                        1e10 * torch.ones_like(depth_values[..., :1]),
+                    ),
+                    dim=-1,
+                )[..., None]
 
-            # Compute aggregation weights
-            weights = self._compute_weights(
-                deltas.view(-1, n_pts, 1),
-                density.view(-1, n_pts, 1)
-            ) 
+                # Compute aggregation weights
+                weights = self._compute_weights(
+                    deltas.view(-1, n_pts, 1),
+                    density.view(-1, n_pts, 1)
+                ) 
 
-            # TODO (1.5): Render (color) features using weights
-            feature = self._aggregate(
-                weights,
-                feature.view(-1, n_pts, feature.shape[-1]) # -1: automatically infer the size of that specific dimension
-            )
+                # TODO (1.5): Render (color) features using weights
+                feature = self._aggregate(
+                    weights,
+                    feature.view(-1, n_pts, feature.shape[-1]) # -1: automatically infer the size of that specific dimension
+                )
 
-            # TODO (1.5): Render depth map
-            depth = self._aggregate(
-                weights,
-                depth_values.view(-1, n_pts, 1)
-            )
+                # TODO (1.5): Render depth map
+                depth = self._aggregate(
+                    weights,
+                    depth_values.view(-1, n_pts, 1)
+                )
 
-            # Return
-            cur_out = {
-                'feature': feature,
-                'depth': depth,
-            }
+                # Return
+                cur_out = {
+                    'feature': feature,
+                    'depth': depth,
+                }
+            else:
+                cur_ray_bundle_coarse = sampler(cur_ray_bundle, weights=None)
+                n_pts_course = cur_ray_bundle_coarse.sample_shape[1]
+
+                out_course = coarse_fn(cur_ray_bundle_coarse)
+                depth_course = cur_ray_bundle_coarse.sample_lengths[..., 0]
+                deltas_course = torch.cat(
+                    (
+                        depth_course[..., 1:] - depth_course[..., :-1], 
+                        1e10 * torch.ones_like(depth_course[..., :1])
+                    ), 
+                    dim=-1
+                )[..., None]
+
+                weights_course = self._compute_weights(
+                    deltas_course.view(-1, n_pts_course, 1), 
+                    out_course['density'].view(-1, n_pts_course, 1)
+                )
+                feature_course = self._aggregate(
+                    weights_course, 
+                    out_course['feature'].view(-1, n_pts_course, out_course['feature'].shape[-1])
+                )
+
+                cur_ray_bundle_fine = sampler(cur_ray_bundle, weights=weights_course)
+                n_pts_fine = cur_ray_bundle_fine.sample_shape[1]
+
+                out_fine = fine_fn(cur_ray_bundle_fine)
+                depth_fine = cur_ray_bundle_fine.sample_lengths[..., 0]
+                deltas_fine = torch.cat(
+                    (
+                        depth_fine[..., 1:] - depth_fine[..., :-1], 
+                        1e10 * torch.ones_like(depth_fine[..., :1])
+                    ), 
+                    dim=-1
+                )[..., None]
+
+                weights_fine = self._compute_weights(
+                    deltas_fine.view(-1, n_pts_fine, 1), 
+                    out_fine['density'].view(-1, n_pts_fine, 1)
+                )
+                feature_fine = self._aggregate(
+                    weights_fine, 
+                    out_fine['feature'].view(-1, n_pts_fine, out_fine['feature'].shape[-1])
+                )
+                depth_fine_map = self._aggregate(
+                    weights_fine, 
+                    depth_fine.view(-1, n_pts_fine, 1)
+                )
+
+                cur_out = {
+                    'feature': feature_fine,
+                    'feature_coarse': feature_course,
+                    'depth': depth_fine_map
+                }
 
             chunk_outputs.append(cur_out)
 

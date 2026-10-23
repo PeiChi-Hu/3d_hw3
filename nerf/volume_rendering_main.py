@@ -56,6 +56,9 @@ class Model(torch.nn.Module):
         self.implicit_fn = implicit_dict[cfg.implicit_function.type](
             cfg.implicit_function
         )
+        self.use_fine = getattr(cfg, 'use_fine', False)
+        if self.use_fine:
+            self.implicit_fn_fine = implicit_dict[cfg.implicit_function.type](cfg.implicit_function)
 
         # Point sampling (raymarching) scheme
         self.sampler = sampler_dict[cfg.sampler.type](
@@ -75,11 +78,18 @@ class Model(torch.nn.Module):
         #  a) Implicit volume
         #  b) Sampling routine
 
-        return self.renderer(
-            self.sampler,
-            self.implicit_fn,
-            ray_bundle
-        )
+        if self.use_fine:
+            return self.renderer(
+                self.sampler, 
+                (self.implicit_fn, self.implicit_fn_fine), 
+                ray_bundle
+            )
+        else:
+            return self.renderer(
+                self.sampler,
+                self.implicit_fn,
+                ray_bundle
+            )
 
 
 def render_images(
@@ -348,8 +358,15 @@ def train_nerf(
             # Run model forward
             out = model(ray_bundle)
 
-            # TODO (Q3.1): Calculate loss
-            loss = torch.nn.functional.mse_loss(out['feature'], rgb_gt)
+            # Add for Q4.2
+            if 'feature_coarse' in out:
+                loss_coarse = torch.nn.functional.mse_loss(out['feature_coarse'], rgb_gt)
+                loss_fine = torch.nn.functional.mse_loss(out['feature'], rgb_gt)
+                loss = loss_coarse + loss_fine
+            else:
+
+                # TODO (Q3.1): Calculate loss
+                loss = torch.nn.functional.mse_loss(out['feature'], rgb_gt)
 
             if cfg.renderer.type == 'volume_sdf':
                 loss += cfg.training.eikonal_weight * get_eikonal_loss(
