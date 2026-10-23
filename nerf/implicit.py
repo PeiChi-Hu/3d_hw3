@@ -265,10 +265,16 @@ class NeuralRadianceField(torch.nn.Module):
         self.mlp = MLPWithInputSkips(
             n_layers=cfg.n_layers_xyz,
             input_dim=embedding_dim_xyz,
-            output_dim=4,                        # Density + 3 RGB color
+            output_dim=129,                        # Density + 3 RGB color (4) -> 128+1
             skip_dim=embedding_dim_xyz,
             hidden_dim=cfg.n_hidden_neurons_xyz, 
             input_skips=[cfg.n_layers_xyz // 2]
+        )
+
+        self.color_head = torch.nn.Sequential(
+            torch.nn.Linear(128 + embedding_dim_dir, cfg.n_hidden_neurons_dir),
+            torch.nn.ReLU(True),
+            torch.nn.Linear(cfg.n_hidden_neurons_dir, 3)
         )
 
     def forward(self, ray_bundle):
@@ -277,16 +283,24 @@ class NeuralRadianceField(torch.nn.Module):
         # print("sample_points:", ray_bundle.sample_points.device)
         # print("sample_lengths:", ray_bundle.sample_lengths.device)
         points = ray_bundle.sample_points # (N_rays, n_pts_per_ray, 3)
+        dirs = ray_bundle.directions
         points = points.to(self.harmonic_embedding_xyz._frequencies.device)
+        dirs = dirs.to(self.harmonic_embedding_dir._frequencies.device)
+
+        dirs = dirs.unsqueeze(1).repeat(1, points.shape[1], 1)
 
         # use Positional Encoding of the input to the network to achieve higher quality
         positional_encoding_xyz = self.harmonic_embedding_xyz(points)
+        positional_encoding_dir = self.harmonic_embedding_dir(dirs)
 
         # MLPWithInputSkips forward
         output = self.mlp(x=positional_encoding_xyz, z=positional_encoding_xyz)
 
         density = output[..., 0:1]
-        color = output[..., 1:4]
+        feature = output[..., 1:]
+
+        color_input = torch.cat([feature, positional_encoding_dir], dim=-1)
+        color = self.color_head(color_input)
 
         # use the ReLU activation to map the first network output to density (to ensure that density is non-negative)
         # use the Sigmoid activation to map the remaining raw network outputs to color
