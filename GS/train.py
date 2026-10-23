@@ -15,15 +15,15 @@ def make_trainable(gaussians):
 
     ### YOUR CODE HERE ###
     # HINT: You can access and modify parameters from gaussians
-    attrs = ["means", "pre_act_scales", "colours", "pre_act_opacities"]
+    parameters = ["pre_act_opacities", "pre_act_scales", "colours", "means"]
     if not gaussians.is_isotropic:
-        attrs.append("pre_act_quats")
+        parameters.append("pre_act_quats")
         
-    for attr in attrs:
-        val = getattr(gaussians, attr)
+    for param in parameters:
+        val = getattr(gaussians, param)
         if isinstance(val, torch.Tensor):
             val.requires_grad_(True)
-            setattr(gaussians, attr, torch.nn.Parameter(val))
+            setattr(gaussians, param, torch.nn.Parameter(val))
 
 def setup_optimizer(gaussians):
 
@@ -38,8 +38,8 @@ def setup_optimizer(gaussians):
     parameters = [
         {'params': [gaussians.pre_act_opacities], 'lr': 0.05, "name": "opacities"},
         {'params': [gaussians.pre_act_scales], 'lr': 0.05, "name": "scales"},
-        {'params': [gaussians.colours], 'lr': 0.05, "name": "colours"},
-        {'params': [gaussians.means], 'lr': 0.05, "name": "means"},
+        {'params': [gaussians.colours], 'lr': 0.005, "name": "colours"},
+        {'params': [gaussians.means], 'lr': 0.001, "name": "means"},
     ]
     optimizer = torch.optim.Adam(parameters, lr=0.0, eps=1e-15)
     # optimizer = None
@@ -112,7 +112,7 @@ def run_training(args):
         # HINT: Get img_size from train_dataset
         # HINT: Get per_splat from args.gaussians_per_splat
         # HINT: camera is available above
-        pred_img, pred_depth, pred_mask = scene.render(
+        pred_img, depth, mask = scene.render(
             camera=camera,
             per_splat=args.gaussians_per_splat,
             img_size=train_dataset.img_size,
@@ -164,7 +164,7 @@ def run_training(args):
             # HINT: Get img_size from train_dataset
             # HINT: Get per_splat from args.gaussians_per_splat
             # HINT: camera is available above
-            pred_img, _, _ = scene.render(
+            pred_img, depth, mask = scene.render(
                 camera=camera,
                 per_splat=args.gaussians_per_splat,
                 img_size=train_dataset.img_size,
@@ -197,7 +197,7 @@ def run_training(args):
             # HINT: Get img_size from test_dataset
             # HINT: Get per_splat from args.gaussians_per_splat
             # HINT: camera is available above
-            pred_img, _, _ = scene.render(
+            pred_img, depth, mask = scene.render(
                 camera=camera,
                 per_splat=args.gaussians_per_splat,
                 img_size=test_dataset.img_size,

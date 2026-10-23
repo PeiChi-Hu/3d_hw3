@@ -67,8 +67,8 @@ class Gaussians:
         self.pre_act_opacities = data["pre_act_opacities"]
 
         # [Q 7.1] NOTE: Uncomment spherical harmonics code for question 7.1
-        # if data.get("spherical_harmonics") is not None:
-        #     self.spherical_harmonics = data["spherical_harmonics"]
+        if data.get("spherical_harmonics") is not None:
+            self.spherical_harmonics = data["spherical_harmonics"]
 
         if self.device == "cuda":
             self.to_cuda()
@@ -88,7 +88,7 @@ class Gaussians:
         data["colours"] = torch.tensor(ply_gaussians["dc_colours"])
 
         # [Q 7.1] NOTE: Uncomment spherical harmonics code for question 7.1
-        # data["spherical_harmonics"] = torch.tensor(ply_gaussians["sh"])
+        data["spherical_harmonics"] = torch.tensor(ply_gaussians["sh"])
 
         if data["pre_act_scales"].shape[1] != 3:
             raise NotImplementedError("Currently does not support isotropic")
@@ -211,7 +211,7 @@ class Gaussians:
         self.pre_act_opacities = self.pre_act_opacities.cuda()
 
         # [Q 7.1] NOTE: Uncomment spherical harmonics code for question 7.1
-        # self.spherical_harmonics = self.spherical_harmonics.cuda()
+        self.spherical_harmonics = self.spherical_harmonics.cuda()
 
     def compute_cov_3D(self, quats: torch.Tensor, scales: torch.Tensor):
         """
@@ -239,17 +239,17 @@ class Gaussians:
         if self.is_isotropic:
 
             ### YOUR CODE HERE ###
-            eye = torch.eye(3, device=self.device, dtype=scales.dtype).unsqueeze(0)
-            cov_3D = (scales ** 2).unsqueeze(-1) * eye  # (N, 3, 3)
+
+            cov_3D = (scales ** 2).unsqueeze(-1) * torch.eye(3, device=self.device, dtype=scales.dtype).unsqueeze(0)  # (N, 3, 3)
 
         # HINT: You can use a function from pytorch3d to convert quaternions to rotation matrices.
         else:
 
             ### YOUR CODE HERE ###
-            R = quaternion_to_matrix(quats)  # (N, 3, 3)
+            rotation = quaternion_to_matrix(quats)  # (N, 3, 3)
             S = torch.diag_embed(scales)     # (N, 3, 3)
-            M = R @ S                        # (N, 3, 3)
-            cov_3D = M @ M.transpose(-1, -2)  # (N, 3, 3)
+            RS = rotation @ S                        # (N, 3, 3)
+            cov_3D = RS @ RS.transpose(-1, -2)  # (N, 3, 3)
 
         return cov_3D
 
@@ -365,9 +365,9 @@ class Gaussians:
         """
         ### YOUR CODE HERE ###
         # HINT: Refer to README for a relevant equation
-        diff = points_2D - means_2D  # (N, H*W, 2)
-        diff_cov = torch.matmul(diff, cov_2D_inverse)  # (N, H*W, 2)
-        power = -0.5 * torch.sum(diff_cov * diff, dim=-1)  # (N, H*W)
+        d = points_2D - means_2D  # (N, H*W, 2)
+        d_cov = d @ cov_2D_inverse  # (N, H*W, 2)
+        power = -0.5 * torch.sum(d_cov * d, dim=-1)  # (N, H*W)
 
         return power
 
@@ -408,8 +408,8 @@ class Scene:
         # HINT: You can use get the means of 3D Gaussians self.gaussians and calculate
         # the depth using the means and the camera
         view_transform = camera.get_world_to_view_transform()
-        means_view = view_transform.transform_points(self.gaussians.means)
-        z_vals = means_view[:, 2]  # (N,)
+        means = view_transform.transform_points(self.gaussians.means)
+        z_vals = means[:, 2]  # (N,)
 
         return z_vals
 
@@ -430,10 +430,9 @@ class Scene:
         Please refer to the README file for more details.
         """
         ### YOUR CODE HERE ###
-        valid_mask = z_vals > 0
-        valid_idxs = torch.where(valid_mask)[0]
-        sorted_order = torch.argsort(z_vals[valid_idxs])
-        idxs = valid_idxs[sorted_order]  # (N,)
+        valid_idxs = torch.where(z_vals > 0)[0]
+        sort = torch.argsort(z_vals[valid_idxs])
+        idxs = valid_idxs[sort]  # (N,)
 
         return idxs
 
@@ -671,9 +670,9 @@ class Scene:
         # colours instead of using self.gaussians.colours[idxs]. You may also comment
         # out the above line of code since it will be overwritten anyway.
 
-        # spherical_harmonics = self.gaussians.spherical_harmonics[idxs]
-        # gaussian_dirs = self.calculate_gaussian_directions(means_3D, camera)
-        # colours = colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs)
+        spherical_harmonics = self.gaussians.spherical_harmonics[idxs]
+        gaussian_dirs = self.calculate_gaussian_directions(means_3D, camera)
+        colours = colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs)
 
         # Apply activations
         quats, scales, opacities = self.gaussians.apply_activations(
@@ -747,5 +746,6 @@ class Scene:
         ### YOUR CODE HERE ###
         # HINT: Think about how to get the camera origin in the world frame.
         # HINT: Do not forget to normalize the computed directions.
-        gaussian_dirs = None  # (N, 3)
+        camera_center = camera.get_camera_center()
+        gaussian_dirs = torch.nn.functional.normalize(means_3D - camera_center, p=2, dim=-1)  # (N, 3)
         return gaussian_dirs

@@ -3,6 +3,7 @@ import torch
 import imageio
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 
 from PIL import Image
 from plyfile import PlyData
@@ -210,5 +211,47 @@ def colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs):
                                     RGB colour.
     """
     ### YOUR CODE HERE ###
-    colours = None
+    dirs = torch.nn.functional.normalize(gaussian_dirs, p=2, dim=-1) # (N, 3)
+    x, y, z = dirs[:, 0], dirs[:, 1], dirs[:, 2]
+
+    C0 = 1 / (2 * math.sqrt(math.pi))
+    C1 = math.sqrt(3 / (4 * math.pi))
+    C2 = [
+        math.sqrt(15 / math.pi) / 2,
+        -math.sqrt(15 / math.pi) / 2,
+        math.sqrt(5 / math.pi) / 4,
+        -math.sqrt(15 / math.pi) / 2,
+        math.sqrt(15 / math.pi) / 4
+    ]
+    C3 = [
+        -math.sqrt(35 / (2 * math.pi)) / 4,
+        math.sqrt(105 / math.pi) / 2,
+        -math.sqrt(21 / (2 * math.pi)) / 4,
+        math.sqrt(7 / math.pi) / 4,
+        -math.sqrt(21 / (2 * math.pi)) / 4,
+        math.sqrt(105 / math.pi) / 4,
+        -math.sqrt(35 / (2 * math.pi)) / 4
+    ]
+
+    y0 = C0 * torch.ones_like(x)
+    y1 = -C1 * y
+    y2 = C1 * z
+    y3 = -C1 * x
+    y4 = C2[0] * x * y
+    y5 = C2[1] * y * z
+    y6 = C2[2] * (3.0 * z * z - 1.0)
+    y7 = C2[3] * x * z
+    y8 = C2[4] * (x * x - y * y)
+    y9 = C3[0] * y * (3.0 * x * x - y * y)
+    y10 = C3[1] * x * y * z
+    y11 = C3[2] * y * (4.0 * z * z - x * x - y * y)
+    y12 = C3[3] * z * (2.0 * z * z - 3.0 * x * x - 3.0 * y * y)
+    y13 = C3[4] * x * (4.0 * z * z - x * x - y * y)
+    y14 = C3[5] * z * (x * x - y * y)
+    y15 = C3[6] * x * (x * x - 3.0 * y * y)
+
+    basis = torch.stack([y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15], dim=-1).unsqueeze(-1)
+
+    rgb = torch.sum(spherical_harmonics.reshape(-1, 16, 3) * basis, dim=1) + 0.5
+    colours = torch.clamp(rgb, 0.0, 1.0)
     return colours
