@@ -15,7 +15,15 @@ def make_trainable(gaussians):
 
     ### YOUR CODE HERE ###
     # HINT: You can access and modify parameters from gaussians
-    pass
+    attrs = ["means", "pre_act_scales", "colours", "pre_act_opacities"]
+    if not gaussians.is_isotropic:
+        attrs.append("pre_act_quats")
+        
+    for attr in attrs:
+        val = getattr(gaussians, attr)
+        if isinstance(val, torch.Tensor):
+            val.requires_grad_(True)
+            setattr(gaussians, attr, torch.nn.Parameter(val))
 
 def setup_optimizer(gaussians):
 
@@ -104,12 +112,17 @@ def run_training(args):
         # HINT: Get img_size from train_dataset
         # HINT: Get per_splat from args.gaussians_per_splat
         # HINT: camera is available above
-        pred_img = None
+        pred_img, pred_depth, pred_mask = scene.render(
+            camera=camera,
+            per_splat=args.gaussians_per_splat,
+            img_size=train_dataset.img_size,
+            bg_colour=(0.0, 0.0, 0.0)
+        )
 
         # Compute loss
         ### YOUR CODE HERE ###
         # HINT: A simple standard loss function should work.
-        loss = None
+        loss = torch.nn.functional.l1_loss(pred_img, gt_img)
 
         loss.backward()
         optimizer.step()
@@ -151,7 +164,12 @@ def run_training(args):
             # HINT: Get img_size from train_dataset
             # HINT: Get per_splat from args.gaussians_per_splat
             # HINT: camera is available above
-            pred_img = None
+            pred_img, _, _ = scene.render(
+                camera=camera,
+                per_splat=args.gaussians_per_splat,
+                img_size=train_dataset.img_size,
+                bg_colour=(0.0, 0.0, 0.0)
+            )
 
         pred_npy = pred_img.detach().cpu().numpy()
         pred_npy = (np.clip(pred_npy, 0.0, 1.0) * 255.0).astype(np.uint8)
@@ -179,7 +197,12 @@ def run_training(args):
             # HINT: Get img_size from test_dataset
             # HINT: Get per_splat from args.gaussians_per_splat
             # HINT: camera is available above
-            pred_img = None
+            pred_img, _, _ = scene.render(
+                camera=camera,
+                per_splat=args.gaussians_per_splat,
+                img_size=test_dataset.img_size,
+                bg_colour=(0.0, 0.0, 0.0)
+            )
 
             gt_npy = gt_img.detach().cpu().numpy()
             pred_npy = pred_img.detach().cpu().numpy()
