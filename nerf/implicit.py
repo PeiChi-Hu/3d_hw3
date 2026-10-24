@@ -319,23 +319,27 @@ class NeuralSurface(torch.nn.Module):
     ):
         super().__init__()
 
-        self.harmonic_embedding_xyz = HarmonicEmbedding(3, cfg.n_harmonic_functions_xyz)
+        n_harmonic_xyz = getattr(cfg, 'n_harmonic_functions_xyz', 6)
+        n_layers_xyz = getattr(cfg, 'n_layers_xyz', 6)
+        n_hidden_neurons_xyz = getattr(cfg, 'n_hidden_neurons_xyz', 128)
+
+        self.harmonic_embedding_xyz = HarmonicEmbedding(3, n_harmonic_xyz)
         embedding_dim_xyz = self.harmonic_embedding_xyz.output_dim
 
         # TODO (Q4.3): Implement Neural Surface MLP to output per-point SDF
         self.mlp = MLPWithInputSkips(
-            n_layers=cfg.n_layers_xyz,
+            n_layers=n_layers_xyz,
             input_dim=embedding_dim_xyz,
             output_dim=1,
             skip_dim=embedding_dim_xyz,
-            hidden_dim=cfg.n_hidden_neurons_xyz,
-            input_skips=[cfg.n_layers_xyz // 2]
+            hidden_dim=n_hidden_neurons_xyz,
+            input_skips=[n_layers_xyz // 2]
         )
         # TODO (Q4.3): Implement Neural Surface MLP to output per-point color
         self.mlp_color = torch.nn.Sequential(
-            torch.nn.Linear(embedding_dim_xyz, cfg.n_hidden_neurons_xyz),
+            torch.nn.Linear(embedding_dim_xyz, n_hidden_neurons_xyz),
             torch.nn.ReLU(True),
-            torch.nn.Linear(cfg.n_hidden_neurons_xyz, 3),
+            torch.nn.Linear(n_hidden_neurons_xyz, 3),
             torch.nn.Sigmoid()
         )
 
